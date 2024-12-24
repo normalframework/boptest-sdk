@@ -1,0 +1,98 @@
+services:
+  provision:
+    image: nfdev.azurecr.io/boptest/provision:latest
+    depends_on:
+      - web
+    environment:
+      - BOPTEST_SERVER
+      - BOPTEST_DASHBOARD_SERVER
+      - BOPTEST_DASHBOARD_API_KEY=${BOPTEST_TEST_PRIVILEGED_KEY}
+    volumes:
+      - ./project1-boptest/:/usr/src/boptest
+  bacnet:
+    build:
+      dockerfile: bacnet/Dockerfile
+      context: .
+    restart: always
+    depends_on:
+      - web
+    environment:
+      - BOPTEST_SERVER
+  web: # main boptest application
+    image: nfdev.azurecr.io/boptest/web:latest
+    environment:
+      - NODE_ENV
+      - BOPTEST_INTERNAL_S3_URL
+      - BOPTEST_PUBLIC_S3_URL
+      - BOPTEST_S3_BUCKET
+      - BOPTEST_REDIS_HOST
+      - BOPTEST_REGION
+      - BOPTEST_TIMEOUT
+      - BOPTEST_MESSAGE_TIMEOUT
+      - BOPTEST_DASHBOARD_SERVER
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - BOPTEST_USE_TEST_USERS # If "true" the following user accounts will be used for testing
+      - BOPTEST_TEST_USERNAME # Only for testing
+      - BOPTEST_TEST_KEY # Only for testing
+      - BOPTEST_TEST_PRIVILEGED_USERNAME # Only for testing
+      - BOPTEST_TEST_PRIVILEGED_KEY # Only for testing
+    depends_on:
+      - redis
+      - worker
+      - mc
+  # Local implementation of s3
+  minio:
+    image: minio/minio
+    entrypoint:
+      - minio
+      - server
+      - /data
+      - --console-address
+      - ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+  mc:
+    image: minio/mc
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5;
+      /usr/bin/mc config host add myminio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
+      /usr/bin/mc mb myminio/boptest;
+      /usr/bin/mc anonymous set public myminio/boptest;
+      /usr/bin/mc anonymous set download myminio/boptest/testcases;
+      /usr/bin/mc anonymous set download myminio/boptest/tests;
+      /usr/bin/mc admin user svcacct add --access-key ${AWS_ACCESS_KEY_ID} --secret-key ${AWS_SECRET_ACCESS_KEY} myminio ${MINIO_ROOT_USER};
+      "
+    depends_on:
+      - minio
+  worker:
+    image: nfdev.azurecr.io/boptest/worker:latest
+    environment:
+      - BOPTEST_LOGLEVEL
+      - BOPTEST_INTERNAL_S3_URL
+      - BOPTEST_S3_BUCKET
+      - BOPTEST_REDIS_HOST
+      - BOPTEST_REGION
+      - BOPTEST_DASHBOARD_SERVER
+      - BOPTEST_DASHBOARD_API_KEY
+      - BOPTEST_TIMEOUT
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+    depends_on:
+      - redis
+      - mc
+  redis:
+    image: redis
+
+  redis-flush:
+    image: redis
+    container_name: redis-flush
+    command: redis-cli -h redis DEL jobs # Flush the jobs queue
+    depends_on:
+      - redis
+
