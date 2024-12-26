@@ -1,6 +1,10 @@
 services:
   provision:
-    build: project1-boptest/service/provision
+    networks:
+      - internal
+    build:
+      context: .
+      dockerfile: Dockerfile.provision
     depends_on:
       - web
     environment:
@@ -10,15 +14,25 @@ services:
     volumes:
       - ./project1-boptest/:/usr/src/boptest
   bacnet:
-    image: nfdev.azurecr.io/boptest/bacnet:latest
+    build:
+      dockerfile: Dockerfile
+      context: .
     restart: always
+    networks:
+      - bacnet_global
+      - internal
     depends_on:
       - web
     environment:
       - BOPTEST_SERVER
   web: # main boptest application
+    restart: always
+    networks:
+      - internal
+    ports:
+      - "8091:80"
     build:
-      dockerfile: project1-boptest/service/web/Dockerfile
+      dockerfile: service/web/Dockerfile
       context: ./project1-boptest
       args:
         - NODE_ENV
@@ -45,6 +59,8 @@ services:
       - mc
   # Local implementation of s3
   minio:
+    networks:
+      - internal
     image: minio/minio
     entrypoint:
       - minio
@@ -59,6 +75,8 @@ services:
       - MINIO_ROOT_USER=${MINIO_ROOT_USER}
       - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
   mc:
+    networks:
+      - internal
     image: minio/mc
     entrypoint: >
       /bin/sh -c "
@@ -73,9 +91,11 @@ services:
     depends_on:
       - minio
   worker:
+    networks:
+      - internal
     build:
-      dockerfile: project1-boptest/service/worker/Dockerfile
-      context: ./project1-boptest
+      dockerfile: Dockerfile.worker
+      context: .
     environment:
       - BOPTEST_LOGLEVEL
       - BOPTEST_INTERNAL_S3_URL
@@ -91,12 +111,23 @@ services:
       - redis
       - mc
   redis:
+    networks:
+      - internal
     image: redis
 
   redis-flush:
+    networks:
+      - internal
     image: redis
     container_name: redis-flush
     command: redis-cli -h redis DEL jobs # Flush the jobs queue
     depends_on:
       - redis
 
+
+networks:
+  internal:
+    driver: bridge
+  bacnet_global:
+    name: bacnet
+    external: true

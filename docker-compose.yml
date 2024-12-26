@@ -1,5 +1,7 @@
 services:
   provision:
+    networks:
+      - internal
     image: nfdev.azurecr.io/boptest/provision:latest
     depends_on:
       - web
@@ -7,19 +9,23 @@ services:
       - BOPTEST_SERVER
       - BOPTEST_DASHBOARD_SERVER
       - BOPTEST_DASHBOARD_API_KEY=${BOPTEST_TEST_PRIVILEGED_KEY}
-    volumes:
-      - ./project1-boptest/:/usr/src/boptest
   bacnet:
-    build:
-      dockerfile: bacnet/Dockerfile
-      context: .
+    networks:
+      - internal
     restart: always
+    image: nfdev.azurecr.io/boptest/bacnet:latest
     depends_on:
       - web
     environment:
+      - TESTCASE=bestest_air
       - BOPTEST_SERVER
   web: # main boptest application
     image: nfdev.azurecr.io/boptest/web:latest
+    networks:
+      - internal
+    restart: always
+    ports:
+      - "8091:80"
     environment:
       - NODE_ENV
       - BOPTEST_INTERNAL_S3_URL
@@ -41,36 +47,9 @@ services:
       - redis
       - worker
       - mc
-  # Local implementation of s3
-  minio:
-    image: minio/minio
-    entrypoint:
-      - minio
-      - server
-      - /data
-      - --console-address
-      - ":9001"
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    environment:
-      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
-      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
-  mc:
-    image: minio/mc
-    entrypoint: >
-      /bin/sh -c "
-      sleep 5;
-      /usr/bin/mc config host add myminio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
-      /usr/bin/mc mb myminio/boptest;
-      /usr/bin/mc anonymous set public myminio/boptest;
-      /usr/bin/mc anonymous set download myminio/boptest/testcases;
-      /usr/bin/mc anonymous set download myminio/boptest/tests;
-      /usr/bin/mc admin user svcacct add --access-key ${AWS_ACCESS_KEY_ID} --secret-key ${AWS_SECRET_ACCESS_KEY} myminio ${MINIO_ROOT_USER};
-      "
-    depends_on:
-      - minio
   worker:
+    networks:
+      - internal
     image: nfdev.azurecr.io/boptest/worker:latest
     environment:
       - BOPTEST_LOGLEVEL
@@ -86,13 +65,54 @@ services:
     depends_on:
       - redis
       - mc
+  # Local implementation of s3
+  minio:
+    networks:
+      - internal
+    image: minio/minio
+    entrypoint:
+      - minio
+      - server
+      - /data
+      - --console-address
+      - ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+  mc:
+    networks:
+      - internal
+    image: minio/mc
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5;
+      /usr/bin/mc config host add myminio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
+      /usr/bin/mc mb myminio/boptest;
+      /usr/bin/mc anonymous set public myminio/boptest;
+      /usr/bin/mc anonymous set download myminio/boptest/testcases;
+      /usr/bin/mc anonymous set download myminio/boptest/tests;
+      /usr/bin/mc admin user svcacct add --access-key ${AWS_ACCESS_KEY_ID} --secret-key ${AWS_SECRET_ACCESS_KEY} myminio ${MINIO_ROOT_USER};
+      "
+    depends_on:
+      - minio
   redis:
+    networks:
+      - internal
     image: redis
 
   redis-flush:
+    networks:
+      - internal
     image: redis
     container_name: redis-flush
     command: redis-cli -h redis DEL jobs # Flush the jobs queue
     depends_on:
       - redis
 
+
+networks:
+  internal:
+    driver: bridge

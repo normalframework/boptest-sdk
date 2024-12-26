@@ -11,7 +11,5 @@ COPY project1-boptest/testcases /app/testcases
 # Install any needed packages specified in requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Define environment variables (optional, can be overridden at runtime)
-
 # Run app.py when the container launches
-CMD ["python", "app.py"]
+CMD ["python", "-u", "app.py"]

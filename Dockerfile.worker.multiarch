@@ -1,0 +1,58 @@
+# this is not working until boptest dependencies are fixed
+FROM ubuntu:20.04
+
+ARG TARGETPLATFORM
+USER root
+ENV HOME /home/boptest
+
+WORKDIR /
+
+RUN apt-get update -y && apt-get install -y \
+    ca-certificates wget curl libglu1 libgfortran4 libjpeg8 libfreetype6 libxi6 libdbus-glib-1-2 libfontconfig1 libsm6 gdebi-core \
+    && apt-get install -y git
+
+# Install commands for Spawn
+ENV SPAWN_VERSION=0.3.0-8d93151657
+RUN wget https://spawn.s3.amazonaws.com/custom/Spawn-$SPAWN_VERSION-Linux.tar.gz \
+    && tar -xzf Spawn-$SPAWN_VERSION-Linux.tar.gz \
+    && ln -s /Spawn-$SPAWN_VERSION-Linux/bin/spawn-$SPAWN_VERSION /usr/local/bin/
+
+
+
+# Download and install miniconda, pyfmi, and remaining python requirements
+RUN echo "$TARGETPLATFORM"
+RUN if [ "$TARGETPLATFORM" = "linux/amd64" ]; then wget https://repo.anaconda.com/miniconda/Miniconda3-py310_24.3.0-0-Linux-x86_64.sh -O /miniconda.sh || exit 1; fi
+RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; then wget https://repo.anaconda.com/miniconda/Miniconda3-py310_24.3.0-0-Linux-aarch64.sh -O /miniconda.sh|| exit 1; fi
+
+RUN  /bin/bash /miniconda.sh -b -p /miniconda \
+	&& . miniconda/bin/activate \
+	&& conda update -n base -c defaults conda \
+	&& conda create --name pyfmi3 python=3.10 -y \
+	&& conda activate pyfmi3
+
+
+RUN . miniconda/bin/activate && conda activate pyfmi3 \
+  && conda install -c conda-forge pyfmi -y \
+	&& pip install -U pip setuptools
+
+COPY project1-boptest/service/worker/requirements/production.txt /boptest/
+
+RUN . miniconda/bin/activate && conda activate pyfmi3 \
+    && python -m pip install -r /boptest/production.txt
+
+COPY project1-boptest/service/worker /worker
+
+# Organize boptest python source into a module
+COPY project1-boptest/testcase.py /boptest/lib/
+COPY project1-boptest/data /boptest/lib/data
+COPY project1-boptest/forecast /boptest/lib/forecast
+COPY project1-boptest/kpis /boptest/lib/kpis
+COPY project1-boptest/version.txt /boptest/
+RUN touch /boptest/__init__.py /boptest/lib/__init__.py
+# Boptest TestCase will look for version.txt in the current working directory
+# which will be "/", therefore this link is required
+RUN ln -sf /boptest/version.txt /version.txt
+
+ENV PYTHONPATH $PYTHONPATH:/worker/jobs/:/boptest:/boptest/lib:/boptest/lib/kpis:/boptest/lib/forecast:/boptest/lib/data
+
+CMD . miniconda/bin/activate && conda activate pyfmi3 && python -m worker

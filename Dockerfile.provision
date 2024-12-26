@@ -5,10 +5,10 @@ RUN apt-get update && \
   pip3 install requests requests_toolbelt && \
   mkdir /usr/src/boptest
 
-ENV PYTHONPATH /usr/src/boptest/service/provision
-
+ENV PYTHONPATH /usr/src/boptest
 WORKDIR /usr/src/boptest
 
-COPY testcases /usr/src/boptest/testcases
+COPY project1-boptest/testcases /usr/src/boptest/testcases
+COPY project1-boptest/service/provision/boptest_submit /usr/src/boptest/boptest_submit
 
 CMD [ "python3", "-m", "boptest_submit", "--shared", "--path", "./testcases/"]

@@ -1,33 +1,28 @@
-# -*- coding: utf-8 -*-
 import os
 import time
-import requests
+
 import rdflib
-
-from bacpypes.debugging import bacpypes_debugging, ModuleLogger
-from bacpypes.consolelogging import ConfigArgumentParser
-
-from bacpypes.core import run, deferred
-from bacpypes.task import recurring_function
-
-from bacpypes.basetypes import DateTime
-from bacpypes.primitivedata import Real
-from bacpypes.object import AnalogValueObject, DateTimeValueObject
-
+import requests
 from bacpypes.app import BIPSimpleApplication
-from bacpypes.service.device import DeviceCommunicationControlServices
-from bacpypes.service.object import ReadWritePropertyMultipleServices
+from bacpypes.core import deferred, run
+from bacpypes.debugging import ModuleLogger, bacpypes_debugging
 from bacpypes.local.device import LocalDeviceObject
 from bacpypes.local.object import (
+    AnalogOutputCmdObject,
     AnalogValueCmdObject,
     Commandable,
-    AnalogOutputCmdObject,
 )
-from bacpypes.object import register_object_type, AnalogInputObject
+from bacpypes.object import AnalogInputObject, register_object_type, EngineeringUnits
+from bacpypes.primitivedata import Real
+from bacpypes.service.device import DeviceCommunicationControlServices
+from bacpypes.service.object import ReadWritePropertyMultipleServices
+from bacpypes.task import recurring_function
 
 # some debugging
-_debug = 0
+_debug = 1
 _log = ModuleLogger(globals())
+
+_log.debug("Starting BACnet application")
 
 # application interval is refresh time in seconds
 
@@ -41,8 +36,8 @@ g = None
 boptest_measurements = None
 boptest_inputs = None
 
-APPINTERVAL = int(os.getenv("APP+INTERVAL", "5000"))  # default 5 seconds
-baseurl = os.getenv("BOPTEST_SERVER", "http://localhost:8091")
+APPINTERVAL = int(os.getenv("APP_INTERVAL", "5000"))  # default 5 seconds
+baseurl = os.getenv("BOPTEST_SERVER", "http://localhost:80")
 testcase = os.getenv("TESTCASE", "bestest_air")
 start_time = int(os.getenv("START_TIME", "0"))
 warmup_period = int(os.getenv("WARMUP_PERIOD", "0"))
@@ -82,7 +77,16 @@ klassMapping = {
     "analog-input": AnalogInputObject,
     "analog-output": AnalogOutputCmdObject,
 }
-unitMapping = {"K": "degreesKelvin", "ppm": "partsPerMillion"}
+unitMapping = {
+    "K": "degreesKelvin",
+    "ppm": "partsPerMillion",
+    "W": "watts",
+    "kg/s": "kilogramsPerSecond",
+    "m": "meters",
+    "rad": "radians",
+    "Pa": "pascals",
+    "m/s": "metersPerSecond",
+}
 
 
 @bacpypes_debugging
@@ -143,6 +147,18 @@ def create_objects(app, configfile):
             # TODO: Check to make sure there actually is an activation signal!
             activation_signal[name] = activation_name
             inputs[name] = obj
+            obj.description = boptest_inputs["payload"][name]["Description"]
+            if units is None and "Unit" in boptest_inputs["payload"][name]:
+                u = boptest_inputs["payload"][name]["Unit"]
+                if u in unitMapping:
+                    obj.units = unitMapping[u]
+
+        if name in boptest_measurements["payload"]:
+            obj.description = boptest_measurements["payload"][name]["Description"]
+            if units is None and "Unit" in boptest_measurements["payload"][name]:
+                u = boptest_measurements["payload"][name]["Unit"]
+                if u in unitMapping:
+                    obj.units = unitMapping[u]
 
 
 @recurring_function(APPINTERVAL)
@@ -191,6 +207,8 @@ def update_boptest_data():
 
     # print("Advancing with signals: " + str(signals))
     response = requests.post("{0}/advance/{1}".format(baseurl, testid), json=signals)
+    if response.status_code == 400:
+        pass
     if response.status_code != 200:
         print("Error response: %r" % (response.status_code,))
         return
@@ -235,22 +253,15 @@ def __attempt_select():
         return requests.post(
             "{0}/testcases/{1}/select".format(baseurl, testcase)
         ).json()["testid"]
-        return True
-    except:
+    except Exception as e:
+        print("Error selecting test case: %s" % e)
         return False
 
 
 @bacpypes_debugging
-def main():
-    global vendor_id, g
-    # parse the command line arguments
-
-    # TODO: check the results to make sure we acutally get an OK!
-    #
+def start_test_case():
     global nextState
     global testid
-    global testcase
-
 
     print("Selecting test case...", testcase)
     attempts = 0
@@ -259,6 +270,7 @@ def main():
         testid = __attempt_select()
         if testid:
             break
+        print("Attempt %d failed, trying again in 2 seconds" % attempts)
         time.sleep(2)
 
     print("Selected test case: %s" % testid)
@@ -278,9 +290,13 @@ def main():
     # moves in sync with wallclock time. To see things happen faster, set this time greater than 5 seconds
     res = requests.put("{0}/step/{1}".format(baseurl, testid), json={"step": 5})
 
+
+@bacpypes_debugging
+def main():
+    start_test_case()
     # make a device object
     this_device = LocalDeviceObject(
-        objectName = os.getenv("BACNET_OBJECT_NAME", testcase),
+        objectName=os.getenv("BACNET_OBJECT_NAME", testcase),
         objectIdentifier=int(os.getenv("BACNET_OBJECT_ID", "12")),
         vendorIdentifier=int(os.getenv("BACNET_VENDOR_ID", "12")),
         maxApduLengthAccepted=int(os.getenv("BACNET_MAX_APDU", "1024")),
@@ -291,7 +307,9 @@ def main():
         _log.debug("    - this_device: %r", this_device)
 
     # make a sample application
-    this_application = ReadPropertyMultipleApplication(this_device, os.getenv("BACNET_ADDRESS", "0.0.0.0:47808"))
+    this_application = ReadPropertyMultipleApplication(
+        this_device, os.getenv("BACNET_ADDRESS", "0.0.0.0:47808")
+    )
 
     # create the objects and add them to the application
     test_case_name = requests.get("{0}/name/{1}".format(baseurl, testid)).json()[
@@ -319,4 +337,5 @@ def main():
 
 
 if __name__ == "__main__":
+    _log.debug("Running main")
     main()
