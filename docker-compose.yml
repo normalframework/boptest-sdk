@@ -9,6 +9,9 @@ services:
       - BOPTEST_SERVER
       - BOPTEST_DASHBOARD_SERVER
       - BOPTEST_DASHBOARD_API_KEY=${BOPTEST_TEST_PRIVILEGED_KEY}
+    build: 
+      dockerfile: Dockerfile.provision
+      context: .
   bacnet:
     networks:
       - internal
@@ -19,6 +22,9 @@ services:
     environment:
       - TESTCASE=bestest_air
       - BOPTEST_SERVER
+    build:
+      dockerfile: Dockerfile
+      context: .
   web: # main boptest application
     image: nfdev.azurecr.io/boptest/web:latest
     networks:
@@ -47,6 +53,9 @@ services:
       - redis
       - worker
       - mc
+    build:
+      dockerfile: service/web/Dockerfile
+      context: project1-boptest
   worker:
     networks:
       - internal
@@ -65,6 +74,9 @@ services:
     depends_on:
       - redis
       - mc
+    build:
+      dockerfile: Dockerfile.worker
+      context: .
   # Local implementation of s3
   minio:
     networks:
