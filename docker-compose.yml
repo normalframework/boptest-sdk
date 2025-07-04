@@ -20,7 +20,10 @@ services:
     depends_on:
       - web
     environment:
-      - TESTCASE=bestest_air
+      - TESTCASE=multizone_office_simple_air
+      - SCENARIO=peak_heat_day
+      - STEP_SIZE=1
+      - APP_INTERVAL=1000
       - BOPTEST_SERVER
     build:
       dockerfile: Dockerfile
@@ -97,7 +100,7 @@ services:
   mc:
     networks:
       - internal
-    image: minio/mc
+    image: minio/mc:RELEASE.2024-11-21T17-21-54Z
     entrypoint: >
       /bin/sh -c "
       sleep 5;
