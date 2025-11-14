@@ -17,11 +17,12 @@ services:
       - internal
     restart: always
     image: nfdev.azurecr.io/boptest/bacnet:latest
+    platform: linux/amd64
     depends_on:
       - web
     environment:
       - TESTCASE=multizone_office_simple_air
-      - SCENARIO=peak_heat_day
+      # - SCENARIO=peak_heat_day
       - STEP_SIZE=1
       - APP_INTERVAL=1000
       - BOPTEST_SERVER
@@ -63,6 +64,7 @@ services:
     networks:
       - internal
     image: nfdev.azurecr.io/boptest/worker:latest
+    platform: linux/amd64
     environment:
       - BOPTEST_LOGLEVEL
       - BOPTEST_INTERNAL_S3_URL

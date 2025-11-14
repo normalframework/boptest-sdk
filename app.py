@@ -40,7 +40,7 @@ APPINTERVAL = int(os.getenv("APP_INTERVAL", "5000"))  # default 5 seconds
 STEP_SIZE = int(os.getenv("STEP_SIZE", "5"))
 baseurl = os.getenv("BOPTEST_SERVER", "http://localhost:80")
 testcase = os.getenv("TESTCASE", "bestest_air")
-start_time = int(os.getenv("START_TIME", "0"))
+start_time = int(os.getenv("START_TIME", round(time.time())))
 warmup_period = int(os.getenv("WARMUP_PERIOD", "0"))
 auto_advance = os.getenv("AUTO_ADVANCE", "true")
 scenario = os.getenv("SCENARIO", "")
@@ -295,7 +295,7 @@ def start_test_case():
     
     if scenario != "":
         res = requests.put("{0}/scenario/{1}".format(baseurl, testid), json={"time_period": scenario})
-
+        
 
 @bacpypes_debugging
 def main():
